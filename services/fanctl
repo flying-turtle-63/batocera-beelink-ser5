@@ -1,0 +1,42 @@
+#!/bin/bash
+# Service Batocera (/userdata/system/services/fanctl) : pilotage du ventilateur CPU sur la temperature reelle du CPU.
+# Constat 2026-09-18 : le Super I/O IT8772E (it87) regule le ventilo en automatique d'apres une thermistance de carte
+# (temp1/temp2 : 38-58 °C quand le CPU est a 50-88 °C, courbe 30/50/90 °C figee dans le BIOS) -> il ne monte jamais
+# en regime et le CPU frole les 90 °C (throttling SMU). Ici : PWM manuel d'apres k10temp (Tctl), courbe par paliers
+# avec hysteresis, mise a jour toutes les 2 s. En cas d'arret du service, l'automatique EC est retabli (trap).
+[ "$1" = "start" ] || exit 0
+log=/userdata/system/logs/fanctl.log
+modprobe it87 ignore_resource_conflict=1 2>/dev/null
+sleep 1
+HW=""; for h in /sys/class/hwmon/hwmon*; do [ "$(cat $h/name 2>/dev/null)" = "it8772" ] && HW=$h; done
+[ -z "$HW" ] && { echo "fanctl: it8772 introuvable, abandon $(date +%T)" >> $log; exit 0; }
+K10=""; for h in /sys/class/hwmon/hwmon*; do [ "$(cat $h/name 2>/dev/null)" = "k10temp" ] && K10=$h; done
+PWM=$HW/pwm2; EN=$HW/pwm2_enable; FAN=$HW/fan2_input
+(
+  trap 'echo 2 > $EN; echo "fanctl: arret, retour EC auto $(date +%T)" >> $log' EXIT
+  echo 1 > $EN
+  cur=-1
+  echo "fanctl: demarrage $(date +%T) ($HW)" >> $log
+  while true; do
+    t=$(( $(cat $K10/temp1_input) / 1000 ))
+    # paliers (Tctl -> PWM 0-255) avec hysteresis de 3 °C a la descente
+    if   [ $t -ge 80 ]; then want=255
+    elif [ $t -ge 74 ]; then want=210
+    elif [ $t -ge 68 ]; then want=160
+    elif [ $t -ge 60 ]; then want=110
+    elif [ $t -ge 52 ]; then want=70
+    else want=45; fi
+    if [ $want -lt $cur ]; then
+      # descente : n'abaisser que si on est 3 °C sous le seuil du palier courant
+      case $cur in 255) lim=77;; 210) lim=71;; 160) lim=65;; 110) lim=57;; 70) lim=49;; *) lim=0;; esac
+      [ $t -ge $lim ] && want=$cur
+    fi
+    if [ $want -ne $cur ]; then
+      echo $want > $PWM; cur=$want
+      echo "$(date +%T) Tctl=$t -> pwm $want (fan $(cat $FAN) rpm)" >> $log
+    fi
+    # re-affirmer le mode manuel (le firmware peut le reprendre)
+    [ "$(cat $EN)" = "1" ] || echo 1 > $EN
+    sleep 2
+  done
+) &

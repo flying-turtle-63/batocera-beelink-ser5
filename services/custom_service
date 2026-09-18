@@ -1,0 +1,56 @@
+#!/bin/bash
+# Garde-fou affichage : (1) au demarrage, apres une coupure, la TV peut ne pas etre detectee quand X
+# demarre : aucun ecran "primary", batocera-resolution echoue et tout lancement plante ; on retablit le
+# primary et le mode es.resolution. (2) Ensuite, en boucle (5 s), on surveille seulement le "primary" :
+# un jeu qui change de mode HDMI (ex. un jeu force en 1080p120) peut le faire perdre a la sortie, et le
+# lancement suivant plante ("invalid literal for int()" dans videoMode.getCurrentResolution).
+# On ne touche jamais au mode video dans la boucle (un jeu peut legitimement etre dans un autre mode).
+[ "$1" = "start" ] || exit 0
+log=/userdata/system/logs/display.log
+get_display() { pgrep -a xinit 2>/dev/null | grep -oE ':[0-9]+$' | head -1; }
+(
+  # --- phase 1 : boot ---
+  for i in $(seq 1 60); do
+    d=$(get_display); [ -z "$d" ] && { sleep 2; continue; }
+    export DISPLAY=$d
+    out=$(xrandr --listConnectedOutputs 2>/dev/null | sed -e "s/\*$//" | head -1)
+    if [ -n "$out" ]; then
+      if [ -z "$(xrandr --listPrimary 2>/dev/null)" ]; then
+        xrandr --output "$out" --primary
+        echo "custom_service: primary retabli sur $out (boot, DISPLAY=$d)" >> "$log"
+      fi
+      cur=$(batocera-resolution currentMode 2>/dev/null)
+      want=$(batocera-settings-get es.resolution 2>/dev/null)
+      if [ -n "$want" ] && [ "$cur" != "$want" ]; then
+        batocera-resolution setMode "$want" && echo "custom_service: mode $want applique (etait $cur)" >> "$log"
+      fi
+      break
+    fi
+    sleep 2
+  done
+  # --- phase 1b : gouverneur/EPP de repos (quelque chose remet "performance" apres S18governor au boot) ---
+  sleep 20; /etc/init.d/S18governor start >/dev/null 2>&1
+  for e in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do echo balance_performance > $e 2>/dev/null; done
+  echo "custom_service: gouverneur powersave / EPP balance_performance appliques" >> "$log"
+  # --- phase 1c : base TDP = 25 W. S93amdtdp reecrit system.cpu.tdp a chaque boot avec le PPT FAST du firmware
+  #     (48 W depuis les reglages BIOS du 2026-09-18) : les pourcentages ES (60/100/120 %) supposent 25 W, sinon
+  #     120 % = 58 W au repos. On remet 25 et on applique le repos a 15 W ; les hooks de jeu font le reste.
+  batocera-settings-set system.cpu.tdp 25 >/dev/null 2>&1
+  /usr/bin/batocera-amd-tdp 15 >/dev/null 2>&1
+  echo "custom_service: system.cpu.tdp=25, repos 15 W" >> "$log"
+  # --- phase 2 : surveillance du primary ---
+  while true; do
+    sleep 5
+    d=$(get_display); [ -z "$d" ] && continue
+    export DISPLAY=$d
+    if [ -z "$(xrandr --listPrimary 2>/dev/null)" ]; then
+      out=$(xrandr --listConnectedOutputs 2>/dev/null | sed -e "s/\*$//" | head -1)
+      if [ -n "$out" ]; then
+        xrandr --output "$out" --primary && echo "custom_service: $(date +%T) primary perdu, retabli sur $out (DISPLAY=$d)" >> "$log"
+      fi
+    fi
+  done
+) &
+
+# Tampons reseau pour le streaming Moonlight 4K (rafales UDP) — la r8169 est limitee a 256 descripteurs RX
+sysctl -qw net.core.netdev_max_backlog=5000 net.core.rmem_default=4194304 net.core.rmem_max=16777216

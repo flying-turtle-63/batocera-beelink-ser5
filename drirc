@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="yes"?>
+<!-- Options Mesa par application (lu via HOME=/userdata/system). 2026-09-18.
+     mesa_glthread : le driver OpenGL travaille sur un thread dedie (utile aux emulateurs GL :
+     RetroArch mupen64plus-next/GLideN64, redream). Les emulateurs Vulkan (Dolphin, PPSSPP, flycast) ne sont pas concernes. -->
+<driconf>
+  <device>
+    <application name="RetroArch" executable="retroarch">
+      <option name="mesa_glthread" value="true"/>
+    </application>
+    <application name="redream" executable="redream">
+      <option name="mesa_glthread" value="true"/>
+    </application>
+  </device>
+</driconf>

@@ -1,0 +1,5 @@
+## FSR 1 (AMD FidelityFX Super Resolution : EASU + RCAS) — jeu de shaders utilisateur (2026-09-17)
+## Pertinent pour les cœurs 3D rendus en dessous de la résolution écran : upscale spatial net vers le viewport 4K.
+default:
+  shader: edge-smoothing/fsr/fsr
+  scanline: false

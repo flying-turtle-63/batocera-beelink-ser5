@@ -1,0 +1,16 @@
+#!/bin/bash
+# Neutralise la carte MediaTek mt7921 (Wi-Fi + Bluetooth), inutilisee : le Beelink est en Ethernet et
+# le Bluetooth passe par le dongle USB Realtek. Le driver Wi-Fi partait en boucle de timeout et figeait
+# la machine (2026-09-17) ; la radio BT MediaTek doublonnait le Realtek et faisait mouliner bluetoothd.
+[ "$1" = "start" ] || exit 0
+ip link set wlan0 down 2>/dev/null
+timeout 10 rmmod mt7921e 2>/dev/null
+for m in mt7921_common mt792x_lib mt76_connac_lib mt76; do timeout 5 rmmod $m 2>/dev/null; done
+# Bluetooth MediaTek (USB 0e8d:0608) : on eteint l'adaptateur, quel que soit son numero hciX
+for h in /sys/class/bluetooth/hci*; do
+  dev=$(readlink -f "$h/device")
+  if [ "$(cat "$dev/../idVendor" 2>/dev/null)" = "0e8d" ]; then
+    hciconfig "$(basename "$h")" down 2>/dev/null && echo "wlan_off: BT MediaTek $(basename "$h") eteint" >> /userdata/system/logs/display.log
+  fi
+done
+echo "wlan_off: $(date +%F_%T) modules mt7921 restants: $(lsmod | grep -c '^mt7')" >> /userdata/system/logs/display.log
