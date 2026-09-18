@@ -22,7 +22,6 @@ for a in "$@"; do case "$a" in
 SYS=/userdata/system
 BK="$SYS/backup-ser5-$(date +%Y%m%d-%H%M%S)"
 CONF_FILE="$SYS/batocera.conf"
-BOOTCONF=/boot/batocera-boot.conf
 log()  { printf '\033[1;32m[ser5]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[ser5] ATTENTION :\033[0m %s\n' "$*"; }
 run()  { if [ $DRY -eq 1 ]; then echo "  (dry-run) $*"; else eval "$@"; fi; }
@@ -89,13 +88,10 @@ if [ $CONF -eq 1 ]; then
   log "$n réglages appliqués depuis conf/settings.conf"
   run "batocera-settings-set system.services '$SERVICES' >/dev/null"
   log "system.services=$SERVICES"
-  # ES en 1080p : la clé est lue dans /boot/batocera-boot.conf
-  if grep -q "^es.resolution=" "$BOOTCONF" 2>/dev/null; then cur=$(grep "^es.resolution=" "$BOOTCONF" | cut -d= -f2); else cur=""; fi
-  if [ "$cur" != "1920x1080.60.00" ]; then
-    backup "$BOOTCONF"
-    run "mount -o remount,rw /boot && { grep -q '^es.resolution=' '$BOOTCONF' && sed -i 's/^es.resolution=.*/es.resolution=1920x1080.60.00/' '$BOOTCONF' || echo 'es.resolution=1920x1080.60.00' >> '$BOOTCONF'; }; sync; mount -o remount,ro /boot"
-    log "es.resolution=1920x1080.60.00 (interface ES en 1080p, jeux en 4K)"
-  fi
+  # ES en 1080p : es.resolution vit dans batocera.conf ; S65values4boot le recopie dans /boot/batocera-boot.conf
+  # à chaque démarrage (éditer /boot directement ne sert à rien : la valeur serait écrasée au reboot suivant).
+  run "batocera-settings-set es.resolution 1920x1080.60.00 >/dev/null"
+  log "es.resolution=1920x1080.60.00 (interface ES en 1080p, jeux en 4K ; appliqué au prochain démarrage)"
 else
   run "batocera-settings-set system.services '$SERVICES' >/dev/null"
 fi

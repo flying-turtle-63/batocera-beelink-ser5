@@ -16,7 +16,7 @@ curl -L https://github.com/flying-turtle-63/batocera-beelink-ser5/archive/refs/h
 /userdata/system/batocera-beelink-ser5-main/install.sh             # applique, puis reboot
 ```
 
-`install.sh` copie les services/scripts/shaders/outils, applique les 139 clés de [`conf/settings.conf`](conf/settings.conf) avec `batocera-settings-set` (fusion, vos autres réglages sont conservés), active `system.services`, pose `es.resolution` dans `/boot/batocera-boot.conf`, sauvegarde l'overlay, et garde une copie de chaque fichier remplacé dans `/userdata/system/backup-ser5-<date>/`. Options : `--no-wifi` (si vous utilisez le Wi-Fi), `--no-conf` (fichiers seulement), `--uninstall`. Le script refuse de blacklister le Wi-Fi si `wifi.enabled=1`, et avertit si le CPU n'est pas un 5560U (les valeurs de puissance et la table du ventilateur sont propres au SER5 — relire `services/fanctl` et `scripts/tdp_heavy.sh` avant de les activer sur une autre machine). Restent manuels : les réglages BIOS (§3) et la vérification de la sortie vidéo (`global.videooutput`).
+`install.sh` copie les services/scripts/shaders/outils, applique les 139 clés de [`conf/settings.conf`](conf/settings.conf) avec `batocera-settings-set` (fusion, vos autres réglages sont conservés), active `system.services`, pose `es.resolution` (recopié dans `/boot/batocera-boot.conf` au démarrage par `S65values4boot`), sauvegarde l'overlay, et garde une copie de chaque fichier remplacé dans `/userdata/system/backup-ser5-<date>/`. Options : `--no-wifi` (si vous utilisez le Wi-Fi), `--no-conf` (fichiers seulement), `--uninstall`. Le script refuse de blacklister le Wi-Fi si `wifi.enabled=1`, et avertit si le CPU n'est pas un 5560U (les valeurs de puissance et la table du ventilateur sont propres au SER5 — relire `services/fanctl` et `scripts/tdp_heavy.sh` avant de les activer sur une autre machine). Restent manuels : les réglages BIOS (§3) et la vérification de la sortie vidéo (`global.videooutput`).
 
 ## Contenu
 
@@ -40,7 +40,7 @@ Activer les services : `system.services=custom_service wlan_off fanctl` dans `ba
 
 - `global.videomode=3840x2160.60.00` pour tous les systèmes : le coût GPU est piloté par la **résolution interne** de chaque émulateur, pas par la sortie.
 - **`global.bezel_stretch=1` est indispensable en 4K** : sans lui, configgen redimensionne l'image du bezel (×2) mais garde le `custom_viewport` en coordonnées 1080p → le jeu occupe un quart de l'écran.
-- `es.resolution=1920x1080.60.00` dans **`/boot/batocera-boot.conf`** (Batocera 43 lit cette clé là, pas dans `batocera.conf`) : l'interface ES en 1080p divise par deux la charge GPU au repos (48 % → 21 %). Les jeux restent en 4K (une bascule HDMI par lancement).
+- `es.resolution=1920x1080.60.00` dans **`batocera.conf`** (Batocera 43 le recopie dans `/boot/batocera-boot.conf` à chaque boot via `S65values4boot` — éditer `/boot` à la main est inutile, la clé y serait vidée si elle manque dans `batocera.conf`) : l'interface ES en 1080p divise par deux la charge GPU au repos (48 % → 21 %). Les jeux restent en 4K (une bascule HDMI par lancement).
 
 ## 2. Émulateurs (Vega 6 = ~1,2 TFLOPS, 35 W partagés avec le CPU)
 
