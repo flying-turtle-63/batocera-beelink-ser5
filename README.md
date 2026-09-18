@@ -6,11 +6,25 @@ Configuration **Batocera 43.1** d'un **Beelink SER5** : Ryzen 5 5560U (6C/12T Ze
 
 Aucune rom, aucun BIOS, aucune clé, aucun média dans ce dépôt.
 
+## Installation en une commande
+
+Sur une box Batocera 43 fraîchement installée (accès SSH, root) :
+
+```bash
+curl -L https://github.com/flying-turtle-63/batocera-beelink-ser5/archive/refs/heads/main.tar.gz | tar xz -C /userdata/system
+/userdata/system/batocera-beelink-ser5-main/install.sh --dry-run   # montre ce qui sera fait
+/userdata/system/batocera-beelink-ser5-main/install.sh             # applique, puis reboot
+```
+
+`install.sh` copie les services/scripts/shaders/outils, applique les 139 clés de [`conf/settings.conf`](conf/settings.conf) avec `batocera-settings-set` (fusion, vos autres réglages sont conservés), active `system.services`, pose `es.resolution` dans `/boot/batocera-boot.conf`, sauvegarde l'overlay, et garde une copie de chaque fichier remplacé dans `/userdata/system/backup-ser5-<date>/`. Options : `--no-wifi` (si vous utilisez le Wi-Fi), `--no-conf` (fichiers seulement), `--uninstall`. Le script refuse de blacklister le Wi-Fi si `wifi.enabled=1`, et avertit si le CPU n'est pas un 5560U (les valeurs de puissance et la table du ventilateur sont propres au SER5 — relire `services/fanctl` et `scripts/tdp_heavy.sh` avant de les activer sur une autre machine). Restent manuels : les réglages BIOS (§3) et la vérification de la sortie vidéo (`global.videooutput`).
+
 ## Contenu
 
 | Fichier | Rôle | Où l'installer |
 |---|---|---|
-| `batocera.conf` | configuration complète (profil 4K, réglages par émulateur, TDP, gouverneur, HUD) — secrets remplacés par `CHANGEME_*` | `/userdata/system/batocera.conf` (fusionner, ne pas écraser aveuglément) |
+| `batocera.conf` | configuration complète de référence (profil 4K, réglages par émulateur, TDP, gouverneur, HUD) — secrets remplacés par `CHANGEME_*` | lecture ; `install.sh` applique `conf/settings.conf` (les clés utiles, sans écraser le reste) |
+| `conf/settings.conf` | les clés appliquées par `install.sh` | — |
+| `install.sh` | installateur idempotent (dry-run, sauvegardes, désinstallation) | — |
 | `services/fanctl` | **pilotage du ventilateur sur la température CPU réelle** | `/userdata/system/services/` |
 | `services/wlan_off` | neutralise la carte Wi-Fi/BT MediaTek (driver instable) | `/userdata/system/services/` |
 | `services/custom_service` | garde-fou affichage (sortie *primary*), gouverneur/EPP de repos, base TDP | `/userdata/system/services/` |
