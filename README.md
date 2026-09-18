@@ -33,14 +33,14 @@ Activer les services : `system.services=custom_service wlan_off fanctl` dans `ba
 | Système | Réglage retenu | Mesure |
 |---|---|---|
 | NES, SNES, Mega Drive, GB/GBA, Lynx, Neo Geo, FBNeo… | natif, `sharp-bilinear-simple`, `runahead=1` + `secondinstance=1` (2 frames sur NES/SNES/MD) | négligeable |
-| **GameCube** | Dolphin Vulkan, **`dual_core=1` (OFF par défaut dans Batocera !)**, ubershaders hybrides, **3×** (1920×1584), AF 4×, MSAA 0 | F-Zero GX / MKDD 2× : GPU 32–35 % → 3× |
-| **Wii** | idem, **2×** | Mario Kart Wii : un thread CPU à 88 % → CPU-bound, 2× suffit |
+| **GameCube** | Dolphin Vulkan, **`dual_core=1` (OFF par défaut dans Batocera !)**, ubershaders hybrides, **3×** (1920×1584), AF 4×, MSAA 0 | deux jeux de course en 2× : GPU 32–35 % → 3× |
+| **Wii** | idem, **2×** | jeu de course : un thread CPU à 88 % → CPU-bound, 2× suffit |
 | N64 | libretro **mupen64plus-next** + GLideN64 1280×960, 3-point, shader FSR | GPU 58 % |
 | PSX | swanstation 4× + PGXP, shader FSR | — |
-| Dreamcast | redream **5×** (3200×2400) ; Re-Volt / Sega GT / THPS2 sur flycast Vulkan 1920×1440 + widescreen intégré + FSR | Daytona 5× : GPU 47 %, 0 image > 20 ms |
-| Naomi / Atomiswave | flycast Vulkan 1280×960 (Naomi 2 : 960×720), FSR | 18 Wheeler : pacing irrégulier (30 fps natif + DPM) |
-| PSP | PPSSPP Vulkan **8× (4K natif)**, God of War en 6× | Burnout 5× : GPU 15 % |
-| Doom (prboom) | 1920×1200 | — |
+| Dreamcast | redream **5×** (3200×2400) ; flycast Vulkan 1920×1440 + FSR pour quelques titres, au cas par cas | jeu d'arcade 5× : GPU 47 %, 0 image > 20 ms |
+| Naomi / Atomiswave | flycast Vulkan 1280×960 (Naomi 2 : 960×720), FSR | un titre à 30 fps natif : pacing irrégulier (DPM) |
+| PSP | PPSSPP Vulkan **8× (4K natif)**, 6× pour les titres les plus lourds | jeu de course 5× : GPU 15 % |
+| prboom (ports) | 1920×1200 | — |
 
 Le set de shaders `fsr` (dossier `shaders/`) fait l'upscale EASU + RCAS des rendus 960–1440 lignes vers le viewport 4K ; la copie du preset dans `/userdata/shaders/` a `FSR_FILMGRAIN = 0` (celui de Batocera ajoute un grain).
 
@@ -54,13 +54,27 @@ Le slider ES « TDP » (`global.tdp=120`) donne 30 W en pic / 24 W soutenu, mais
 ### La vraie cause thermique : le ventilateur
 Le ventilateur est piloté par le Super I/O **IT8772E** dont la régulation automatique suit une **thermistance de carte** (49–58 °C quand le CPU passe de 46 à 88 °C) avec la courbe figée du BIOS (« PC Health » : off 30 / start 50 / full 90 °C). Il plafonne à ~1 700 tr/min alors qu'il monte à 5 000. La table « Fan Control » du menu SMU (AMD CBS) est inerte. **`services/fanctl`** charge `it87` (`ignore_resource_conflict=1`), passe `pwm2` en manuel et suit **Tctl** (k10temp) par paliers 45/70/110/160/210/255 à 52/60/68/74/80 °C, hystérésis 3 °C, retour à l'automatique si le service s'arrête.
 
-Résultat (burn 12 threads à 30 W) : **83–88 °C → 70 °C**. En jeu lourd à 35 W : 69–74 °C. Un repaste n'était pas nécessaire (référence communautaire d'un SER5 repasté à 35 W : 84 °C, 3 243 MHz ; cet exemplaire : 3 430–3 750 MHz à 74 °C). Surélever le boîtier d'1 cm aide aussi.
+Résultat (burn 12 threads à 30 W) : **83–88 °C → 70 °C**. En jeu lourd à 35 W : 69–74 °C. Cet exemplaire avait déjà été repasté (pâte thermique changée ~2 ans avant ces mesures) : le repaste seul ne suffisait pas, la régulation du ventilateur était le vrai facteur. Surélever le boîtier d'1 cm aide aussi.
 
 ### Repos
 `system.cpu.governor=powersave` (= mode dynamique d'`amd-pstate` en mode *active*, EPP `balance_performance`, pas un bridage) : repos 3,4 GHz / 18 W / 61 °C → 2,1 GHz / 11 W / 48–58 °C. `global.powermode=highperformance` remet `performance` à chaque lancement. Attention : `S93amdtdp` réécrit `system.cpu.tdp` à chaque boot à partir du PPT annoncé par le firmware (48 W après certains réglages BIOS) et les pourcentages ES supposent 25 W → `custom_service` force la base à 25 W et 15 W de repos après le boot.
 
-### BIOS (AMD CBS accessible sur ce modèle)
-UMA Frame Buffer **4 Go** (`UMA_SPECIFIED`), System Configuration « 25W POR-3 » (le max proposé), GPU Host Translation Cache `Auto`. Le carve-out à 8 Go est à éviter (plus assez de RAM système).
+### BIOS (Aptio / AMI, menus AMD CBS accessibles sur ce modèle)
+
+| Menu | Réglage | Valeur retenue | Pourquoi |
+|---|---|---|---|
+| Advanced → AMD CBS → NBIO → GFX Configuration | **iGPU Configuration** | `UMA_SPECIFIED` | seul mode où la taille choisie ci-dessous est appliquée (`UMA_AUTO` = choix du firmware, souvent 512 Mo–2 Go ; `UMA_GAME_OPTIMIZED` = préréglage non contrôlable) |
+| idem | **UMA Frame Buffer Size** | **4 Go** (choix : 2/3/4/8) | 3 Go d'origine ; 4 Go laissent 12 Go au système. 8 Go est à éviter : les émulateurs lourds montent à 6–7 Go de RSS côté hôte, sans swap on frôlerait le plantage, et sur un APU VRAM et GTT sont la même DDR4 (la GTT de ~6 Go sert déjà de débordement). Vérification sous Linux : `mem_info_vram_total` = 4,0 Go, GTT 5,8 Go |
+| idem | GPU Host Translation Cache | `Auto` | sans effet sur le rendu, un forçage peut gêner `amdgpu` |
+| Advanced → AMD CBS → SMU Common Options | System Configuration | « 25W POR Configuration-3 » (le max proposé, sinon 10/15 W/Auto) | c'est la table d'origine du plafond PPT APU 25 W, contourné par le hook `tdp_heavy.sh` |
+| idem | Fan Control (table manuelle) | **inerte sur ce modèle** — laisser `Auto` | le ventilateur est piloté par le Super I/O IT8772E, pas par le SMU ; voir `services/fanctl` |
+| idem | System Temperature Tracking (STT) | `Disabled` | bridage « température de peau » conçu pour les portables |
+| idem | STAPM Control | à laisser par défaut | Batocera et le hook réécrivent les limites à chaque lancement/arrêt ; toute valeur BIOS plus haute change le PPT annoncé au boot et donc la base que `S93amdtdp` recopie dans `system.cpu.tdp` (voir *Repos*) |
+| Advanced → PC Health Status | Smart CPU_Fan | valeurs figées (off 30 / start 50 / full 90 °C, slope 1) — non modifiables | c'est cette courbe EC que `fanctl` remplace |
+| Advanced → USB Configuration | Legacy USB / XHCI hand-off | `Enabled` (défaut) | nécessaires au clavier BIOS et à Linux, rien à changer |
+| Advanced (page AMD) | DPTC interface `Auto`, STT sensor reporting `Disabled`, tensions VDDP/VDDIO | défaut | ne pas toucher aux tensions ; Curve Optimizer / undervolt sont refusés par le SMU sur ce firmware (`ryzenadj --set-coall` rejeté) |
+
+Effet de bord observé après ces changements : le firmware annonce au boot STAPM 37,5 / fast 48 / slow 37,5 W au lieu de 25/30/24 ; comme Batocera re-détecte `system.cpu.tdp` depuis le PPT FAST à chaque démarrage, `custom_service` force la base à 25 W pour garder le sens des pourcentages ES.
 
 ## 4. Stabilité
 

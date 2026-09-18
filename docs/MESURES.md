@@ -6,13 +6,13 @@ Méthode : `tools/perfmon.sh` (1 Hz : CPU total / cœur max / MHz, GPU busy / sc
 
 | Jeu (réglage) | fps moy / 1 % low | GPU busy | Cœur max | PPT | Verdict |
 |---|---|---|---|---|---|
-| F-Zero GX (GC, Dolphin 2×) | 59,9 / 59,8 | 32 % | 25 % | 12 W | énorme marge → GC passé en 3× |
-| Mario Kart Double Dash (GC 2×) | 60,4 / 47,4 | 35 % | 24 % (pic 64) | 12 W | palier de 4 s à 48 fps (shader/pacing) |
-| Mario Kart Wii (Wii 2×) | 60,6 / 59,4 | 32 % | **88 %** | 18 W | CPU-bound sur un thread → reste en 2× |
-| Daytona USA (redream 5×) | 60,1 / 53,7 | 47 % (pics 71) | 34 % | 20 W | 5× confortable |
-| 18 Wheeler (Naomi, flycast) | 37 irrégulier | 34 % | 38 % | 18 W | 30 fps natif + pacing cassé (alternance 21/43 ms, sclk 400 MHz) |
-| Burnout Legends (PSP 5×) | 30,0 (33,4 ms constants) | 15 % | 33 % | 14 W | 30 fps natif → 8× possible |
-| Mario Kart 64 (N64, GLideN64 + FSR) | — | 58 % | 26 % | 17 W | marge |
+| Course futuriste (GC, Dolphin 2×) | 59,9 / 59,8 | 32 % | 25 % | 12 W | énorme marge → GC passé en 3× |
+| Kart (GC 2×) | 60,4 / 47,4 | 35 % | 24 % (pic 64) | 12 W | palier de 4 s à 48 fps (shader/pacing) |
+| Kart (Wii 2×) | 60,6 / 59,4 | 32 % | **88 %** | 18 W | CPU-bound sur un thread → reste en 2× |
+| Course arcade (Dreamcast, redream 5×) | 60,1 / 53,7 | 47 % (pics 71) | 34 % | 20 W | 5× confortable |
+| Course de camions (Naomi, flycast) | 37 irrégulier | 34 % | 38 % | 18 W | 30 fps natif + pacing cassé (alternance 21/43 ms, sclk 400 MHz) |
+| Course (PSP 5×) | 30,0 (33,4 ms constants) | 15 % | 33 % | 14 W | 30 fps natif → 8× possible |
+| Kart (N64, GLideN64 + FSR) | — | 58 % | 26 % | 17 W | marge |
 
 Enseignements : rien n'est power-bound aux réglages ES (STAPM ≤ 21 W, PPT slow ≤ 24 W) ; le plafond réel était le PPT APU 25 W ; le GPU passe 40–78 % du temps à 400 MHz par sous-charge (DPM auto) → forcé `high` en jeu.
 
@@ -25,7 +25,7 @@ Enseignements : rien n'est power-bound aux réglages ES (STAPM ≤ 21 W, PPT slo
 | 30 W | table SMU manuelle du BIOS | 3 400–3 550 MHz | **85 °C** | la table est inerte, c'est l'EC qui pilote |
 | **30 W** | **`fanctl` (PWM sur Tctl)** | 3 260–3 350 MHz | **70 °C**, 3 600 tr/min | — |
 
-Référence communautaire : SER5 repasté à 35 W = 84 °C / 3 243 MHz. Le repaste n'est pas le sujet, la sonde du ventilateur l'est.
+Référence communautaire : SER5 repasté à 35 W = 84 °C / 3 243 MHz. Cet exemplaire est lui aussi repasté (~2 ans avant) : la sonde du ventilateur, pas la pâte, faisait la différence.
 
 ## En jeu, avant / après (mêmes réglages de jeu, 35 W)
 

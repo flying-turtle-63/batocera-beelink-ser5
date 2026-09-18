@@ -3,7 +3,7 @@
 # Sur les systèmes lourds : (1) puissance SOUTENUE à 35 W (burn test 35 W : 3,4-3,7 GHz, 84,6 °C max, pas de throttling) — tdp_hooks.sh (exécuté juste avant) pose
 # stapm/fast = 30 W mais slow = 24 W et ne touche jamais au PPT APU (25 W d'usine) qui est le vrai
 # plafond ; 30 W soutenu = 80-81 °C max mesuré. (2) GPU forcé à sa fréquence max (DPM "high") : en
-# auto, l'iGPU reste souvent à 400 MHz sous charge partielle (pacing cassé : 18 Wheeler, N64...).
+# auto, l'iGPU reste souvent à 400 MHz sous charge partielle (pacing irrégulier sur certains jeux Naomi/N64).
 # Tout est remis (25 W, DPM auto) à l'arrêt du jeu.
 event=$1; system=$2
 log=/userdata/system/logs/amd-tdp.log
