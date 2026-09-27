@@ -38,3 +38,11 @@ Tout caractère non-ASCII s'affiche comme un espace, dans les menus comme dans l
 ## Appui court sur le bouton d'alimentation sans effet
 
 Le gestionnaire maison mémorisait l'heure d'appui dans un drapeau qu'il n'écrasait pas s'il existait déjà : un relâchement perdu laissait un drapeau orphelin, et tous les appuis suivants héritaient de sa date — donc étaient traités en appui long (menu Quitter au lieu de l'arrêt). Un appui court a ainsi été mesuré à 26 minutes. Correctif : rafraîchir le drapeau au-delà d'une seconde (fenêtre du périphérique ACPI jumeau PWRB/PWRF) et considérer toute durée supérieure à six secondes comme périmée, puisque l'EC coupe l'alimentation à ce stade.
+
+## Moonlight : 197 ms de décodage, le rendu EGL n'était jamais actif
+
+Flux fluide côté serveur mais latence énorme et images perdues côté box. Cause : sans `SDL_VIDEO_X11_FORCE_EGL=1`, SDL ouvre un contexte GLX, le renderer zero-copy de `moonlight-qt` échoue (« Cannot get EGL display ») et Moonlight retombe sur un chemin VAAPI qui plafonne vers 60 images/s — 197 ms de décodage en 4K60, 76 ms et 52 % de pertes en 1080p120. Avec EGL : 0,15 à 0,35 ms. Batocera ne permet pas de passer une variable d'environnement au générateur d'émulateur, d'où le wrapper monté en *bind* sur `/usr/bin/moonlight-qt` (`services/moonlight_egl`). Ajouter `SDL_VIDEO_X11_XRANDR=0` et `SDL_VIDEO_X11_XVIDMODE=0` : sans gestionnaire de fenêtres, `moonlight-qt` passe en plein écran SDL exclusif et choisit lui-même un mode, ce qui ramène le flux à 60 Hz — et un veilleur qui remet le mode pendant l'initialisation du rendu fait planter Mesa.
+
+## Le téléviseur quitte le réseau en veille
+
+Le pilotage par API REST + Wake-on-LAN fonctionne, mais dans les deux modes de « Démarrage à distance » testés, le téléviseur cesse de répondre après une dizaine de minutes de veille : plus de ping, API muette, et le paquet magique ne le réveille plus. Il ne reste joignable que si quelque chose lui parle régulièrement. Vérifier l'économiseur d'énergie du système d'exploitation du téléviseur ; sinon, keepalive depuis un appareil toujours allumé, ou adaptateur USB-CEC. Ne jamais appeler `setWolMode true` : cela rebascule le réglage sur « activation par les applications ».

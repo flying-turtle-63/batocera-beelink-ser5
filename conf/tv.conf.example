@@ -1,0 +1,7 @@
+# Exemple de /userdata/system/tv.conf — pilotage d une TV Sony Bravia par API REST (utilise par tools/tv.sh et services/tv_on).
+# Copier vers /userdata/system/tv.conf et renseigner les trois premieres valeurs.
+TV_IP=CHANGEME_ip_de_la_tv
+TV_MAC=CHANGEME_mac_filaire_de_la_tv
+TV_PSK=CHANGEME_cle_pre_partagee_definie_dans_la_tv
+TV_INPUT=extInput:hdmi?port=4
+TV_MUTE_AT_ON=1

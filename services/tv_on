@@ -1,0 +1,8 @@
+#!/bin/bash
+# Service Batocera (system.services) : allume la TV Sony et la bascule sur l'entree du Beelink (HDMI 4)
+# au demarrage, via tools/tv.sh (API Bravia + WoL, pas de CEC sur le HDMI du SER5).
+# Volontairement RIEN a l'arret (precaution) : le reboot de test du 2026-09-20 avec la TV en veille a fini en
+# blocage S5, mais la reproduction deterministe (session S5, netconsole) est passee : coincidence avec le
+# blocage aleatoire, pas une cause etablie (la Sony en veille garde le HPD actif).
+[ "$1" = "start" ] && /userdata/system/tools/tv.sh on >/dev/null 2>&1 &
+exit 0

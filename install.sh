@@ -6,6 +6,7 @@
 #   ./install.sh --dry-run  # montre ce qui serait fait, ne modifie rien
 #   ./install.sh --no-wifi  # ne blackliste pas la carte Wi-Fi (si vous en avez besoin)
 #   ./install.sh --no-conf  # ne touche pas à batocera.conf (services/scripts/outils seulement)
+#   ./install.sh --no-streaming # n'installe ni le client Moonlight (EGL, hook de mode) ni le pilotage TV
 #   ./install.sh --uninstall
 #
 # Exemple depuis un PC : scp -r . root@batocera.local:/userdata/system/ser5-setup && ssh root@batocera.local /userdata/system/ser5-setup/install.sh
@@ -14,9 +15,9 @@
 # services sont réappliqués). Il ne touche ni aux roms, ni aux BIOS, ni aux sauvegardes.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-DRY=0; WIFI=1; CONF=1; UNINSTALL=0
+DRY=0; WIFI=1; CONF=1; UNINSTALL=0; STREAM=1
 for a in "$@"; do case "$a" in
-  --dry-run) DRY=1;; --no-wifi) WIFI=0;; --no-conf) CONF=0;; --uninstall) UNINSTALL=1;;
+  --dry-run) DRY=1;; --no-wifi) WIFI=0;; --no-conf) CONF=0;; --uninstall) UNINSTALL=1;; --no-streaming) STREAM=0;;
   -h|--help) sed -n 2,14p "$0"; exit 0;; *) echo "option inconnue : $a" >&2; exit 1;; esac; done
 
 SYS=/userdata/system
@@ -42,7 +43,7 @@ cpu=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2)
 echo "$cpu" | grep -q "5560U" || warn "CPU différent du Ryzen 5 5560U (${cpu# }) : les valeurs de puissance/ventilation (35 W, table PWM, sonde it87) sont spécifiques au Beelink SER5 — relisez services/fanctl et scripts/tdp_heavy.sh avant de les activer"
 if [ $UNINSTALL -eq 1 ]; then
   log "désinstallation des services/scripts (batocera.conf n'est pas modifié)"
-  run "rm -f $SYS/services/fanctl $SYS/services/wlan_off $SYS/services/custom_service $SYS/services/s5_guard $SYS/services/audio_guard $SYS/services/bt_idle $SYS/tools/bt_idle.py $SYS/power-button.sh $SYS/configs/multimedia_keys.conf $SYS/scripts/tdp_heavy.sh $SYS/.drirc /etc/modprobe.d/blacklist-wifi-mt7921.conf"
+  run "rm -f $SYS/services/fanctl $SYS/services/wlan_off $SYS/services/custom_service $SYS/services/s5_guard $SYS/services/audio_guard $SYS/services/bt_idle $SYS/tools/bt_idle.py $SYS/power-button.sh $SYS/configs/multimedia_keys.conf $SYS/services/moonlight_egl $SYS/services/tv_on $SYS/scripts/moonlight_mode.sh $SYS/tools/tv.sh $SYS/scripts/tdp_heavy.sh $SYS/.drirc /etc/modprobe.d/blacklist-wifi-mt7921.conf"
   run "rm -rf /userdata/shaders/configs/fsr /userdata/shaders/edge-smoothing/fsr"
   run "batocera-settings-set system.services ''"
   run "batocera-save-overlay >/dev/null"
@@ -74,6 +75,21 @@ SERVICES="$SERVICES s5_guard audio_guard bt_idle"
 # bouton d'alimentation : arret propre sur appui court (voir README §4)
 install_file power-button.sh            "$SYS/power-button.sh"                   755
 install_file configs/multimedia_keys.conf "$SYS/configs/multimedia_keys.conf"    644
+
+# streaming Moonlight + pilotage TV (optionnels : --no-streaming pour s'en passer)
+if [ $STREAM -eq 1 ]; then
+  install_file services/moonlight_egl  "$SYS/services/moonlight_egl" 755
+  install_file scripts/moonlight_mode.sh "$SYS/scripts/moonlight_mode.sh" 755
+  install_file tools/tv.sh             "$SYS/tools/tv.sh"            755
+  install_file services/tv_on          "$SYS/services/tv_on"         755
+  SERVICES="$SERVICES moonlight_egl tv_on"
+  if [ -f "$SYS/tv.conf" ]; then
+    log "tv.conf déjà présent : conservé"
+  else
+    install_file conf/tv.conf.example "$SYS/tv.conf" 644
+    warn "renseignez TV_IP / TV_MAC / TV_PSK dans $SYS/tv.conf (sinon tv_on ne fera rien)"
+  fi
+fi
 
 install_file scripts/tdp_heavy.sh "$SYS/scripts/tdp_heavy.sh" 755
 warn "tout fichier exécutable dans $SYS/scripts/ est un hook gameStart/gameStop : n'y déposez rien d'autre"

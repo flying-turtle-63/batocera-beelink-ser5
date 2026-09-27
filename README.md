@@ -32,13 +32,17 @@ curl -L https://github.com/flying-turtle-63/batocera-beelink-ser5/archive/refs/h
 | `services/audio_guard` | rattrape la sortie audio quand le GPU change d'adresse PCI (son perdu après un redémarrage) | `/userdata/system/services/` |
 | `services/bt_idle` + `tools/bt_idle.py` | déconnecte les manettes Bluetooth après 10 min sans appui (la manette s'éteint alors seule et ne se vide plus) | `/userdata/system/services/` et `/userdata/system/tools/` |
 | `power-button.sh` + `configs/multimedia_keys.conf` | bouton d'alimentation : **appui court = arrêt propre** (jeu fermé, gamelists sauvegardées), appui long = menu Quitter | `/userdata/system/` et `/userdata/system/configs/` |
+| `services/moonlight_egl` | **force le rendu EGL zero-copy de Moonlight** (sans lui, le décodage passe de 0,2 ms à ~197 ms) et permet une résolution de flux hors 720p/1080p/4K | `/userdata/system/services/` |
+| `scripts/moonlight_mode.sh` | hook Batocera : applique le mode d'affichage voulu pendant le flux (modelines 1440p120 / 1620p100 / 1620p120 incluses) et remet celui de l'interface à la sortie | `/userdata/system/scripts/` (exécutable) |
+| `services/tv_on` + `tools/tv.sh` + `conf/tv.conf.example` | allume le téléviseur et bascule sur la bonne entrée au démarrage, par **API REST Sony Bravia + Wake-on-LAN** (le HDMI de cette box n'a pas de ligne CEC) | `/userdata/system/services/`, `/userdata/system/tools/`, `/userdata/system/tv.conf` |
+| `pc-windows/` | côté serveur : Sunshine en service, écran virtuel (VDD), Steam Big Picture, scripts PowerShell d'appoint | poste Windows |
 | `scripts/tdp_heavy.sh` | hook Batocera : 35 W soutenus + GPU à sa fréquence max pendant les jeux lourds | `/userdata/system/scripts/` (exécutable) |
 | `etc/modprobe.d/blacklist-wifi-mt7921.conf` | blacklist du driver `mt7921e` | `/etc/modprobe.d/` puis `batocera-save-overlay` |
 | `drirc` | `mesa_glthread` pour les émulateurs OpenGL | `/userdata/system/.drirc` |
 | `shaders/` | set de shaders **FSR 1** (EASU + RCAS, sans grain de film) pour les cœurs 3D libretro | `/userdata/shaders/` |
 | `tools/perfmon.sh`, `bench.sh`, `burntest.sh` | mesure (1 Hz : CPU/GPU/MHz/puissance/Tctl), banc via l'API EmulationStation, burn test à puissance fixée | `/userdata/system/` |
 
-Activer les services : `system.services=custom_service wlan_off fanctl s5_guard audio_guard bt_idle` dans `batocera.conf` (ou menu ES → Système → Services). Après avoir posé `configs/multimedia_keys.conf` : `/etc/init.d/S50triggerhappy restart`.
+Activer les services : `system.services=custom_service wlan_off fanctl s5_guard audio_guard bt_idle moonlight_egl tv_on` dans `batocera.conf` (ou menu ES → Système → Services). Après avoir posé `configs/multimedia_keys.conf` : `/etc/init.d/S50triggerhappy restart`.
 
 ## 1. Affichage 4K
 
@@ -109,7 +113,49 @@ Effet de bord observé après ces changements : le firmware annonce au boot STAP
 - **Bouton d'alimentation** : en standard, `triggerhappy` appelle `batocera-shutdown` **dès l'appui**, ce qui tue le jeu et EmulationStation sans rien sauvegarder. `power-button.sh` (+ la surcharge `configs/multimedia_keys.conf`, qui survit aux mises à jour) ferme proprement le jeu via l'API ES puis quitte ES avant d'éteindre ; appui long = menu Quitter. Piège corrigé dans ce dépôt : le drapeau d'appui n'était écrit que s'il n'existait pas, si bien qu'un relâchement perdu laissait un drapeau orphelin et que **tous les appuis suivants héritaient de sa date** et passaient en appui long (un appui court a été mesuré à 26 minutes) ; le drapeau est rafraîchi au-delà d'une seconde et toute durée supérieure à six secondes est traitée comme périmée.
 - Câble HDMI : en 4K60 4:4:4 (18 Gbit/s), un câble limite scintille ; comparer une capture interne (`batocera-screenshot`) avec l'écran avant d'accuser l'émulateur.
 
-## 5. Mesurer avant de régler
+## 5. Streaming Moonlight ↔ Sunshine (jeux PC sur la box)
+
+La box sert aussi de client de streaming : un PC Windows fait tourner **Sunshine**, la box affiche le flux avec **Moonlight**. Profil retenu : **2880×1620 à 120 Hz, HEVC, 120 Mbit/s**, soit le maximum que laisse passer le maillon le plus faible.
+
+### Ce qui dimensionne la chaîne
+
+| Maillon | Ce qui limite | Conséquence |
+|---|---|---|
+| Sortie HDMI du client | **HDMI 2.0, 600 MHz de pixel clock** (pas de FRL/HDMI 2.1) | plafond réel : 1620p120 en 8 bits avec blanking réduit ; le 4K120 est hors d'atteinte, le 4K60 passe mais coûte deux fois plus en décodage |
+| Décodeur vidéo du client | VCN de l'iGPU, HEVC 4:2:0 10 bits, ≈ 500 Mpx/s | tient 1620p120 ; **à condition que le rendu soit en EGL** (voir ci-dessous) |
+| Réseau | Gigabit filaire des deux côtés | 120 Mbit/s = 12 % du lien, ~1 ms, 0 % de pertes |
+| Téléviseur | EDID sans 1440p/1620p, mais **accepte les modelines personnalisées** | modes ajoutés à la volée par le hook (voir `scripts/moonlight_mode.sh`) |
+
+### Le piège à ne pas rater : le rendu EGL
+
+Sans `SDL_VIDEO_X11_FORCE_EGL=1`, SDL crée un contexte GLX, le renderer zero-copy de `moonlight-qt` échoue (« Cannot get EGL display ») et Moonlight retombe sur un chemin VAAPI qui plafonne vers 60 images/s : **décodage mesuré à 197 ms en 4K60, 76 ms et 52 % d'images perdues en 1080p120**. Avec EGL : **0,15 à 0,35 ms de décodage**, rendu 4,4 ms en 1080p120, 0 % de pertes. Batocera ne permet pas de passer une variable d'environnement au générateur : `services/moonlight_egl` masque donc `/usr/bin/moonlight-qt` par un wrapper (montage *bind*, refait à chaque démarrage, la copie du vrai binaire étant rafraîchie à chaque fois — une mise à jour de Batocera est suivie automatiquement).
+
+Le wrapper sert aussi à imposer une résolution de flux hors des trois choix du générateur (`--720`/`--1080`/`--4K`) : clé `moonlight.resolution_override=--resolution 2880x1620`.
+
+Deux variables complètent le tableau : `SDL_VIDEO_X11_XRANDR=0` et `SDL_VIDEO_X11_XVIDMODE=0`. Sans elles, `moonlight-qt` — qui tourne en plein écran SDL exclusif, faute de gestionnaire de fenêtres — choisit lui-même un mode et retombe en 60 Hz ; un veilleur qui remettait le 120 Hz pendant l'initialisation du rendu provoquait un plantage de Mesa.
+
+### Mode d'affichage pendant le flux
+
+`scripts/moonlight_mode.sh` est un hook `gameStart`/`gameStop` : il applique `moonlight.display_mode` (par exemple `2880x1620.120.00`) au lancement et remet `es.resolution` à la sortie, en ajoutant au besoin la modeline correspondante. Trois modes sont fournis, tous sous la limite des 600 MHz : **2560×1440@120** (CVT-RB, 497 MHz), **2880×1620@100** (516 MHz) et **2880×1620@120** (blanking réduit sous la norme, 586 MHz). Un profil par tuile est possible : `steam["<fichier>.steam"].display_mode` et `.resolution_override` priment sur les clés globales.
+
+### Côté Windows
+
+Voir `pc-windows/README.md`. Points qui coûtent le plus de temps à trouver :
+
+- **Sunshine doit tourner en service**, pas via une tâche planifiée (une instance lancée par tâche planifiée ne peut créer aucun processus enfant, erreur 5).
+- La capture se fait sur un **écran virtuel** (Virtual Display Driver) en `dd_configuration_option = ensure_only_display`, résolution et fréquence en `auto` : c'est le client qui impose le mode, et l'écran physique du PC peut rester éteint.
+- Dans `sunshine.conf`, `csrf_allowed_origins` est une liste séparée par des **virgules, sans crochets**.
+- L'application « Steam Big Picture » a une commande **vide et détachée** (`cmd /C start "" steam://open/bigpicture`), sinon Sunshine attend la fin du processus.
+- **ViGEmBus** est requis pour l'émulation des manettes.
+- Quitter le flux depuis la manette : **Start+Select+L1+R1** (le raccourci Batocera habituel ne s'applique pas ici).
+
+### Allumer le téléviseur sans CEC
+
+Le HDMI de cette box n'expose aucune ligne CEC (`/dev/cec*` absent). Le pilotage passe donc par le réseau : `tools/tv.sh` parle à l'API REST d'un téléviseur Sony Bravia (« Contrôle IP » en *Normal et clé pré-partagée*, « Démarrage à distance » activé) et envoie un paquet magique à son interface filaire ; `services/tv_on` l'appelle au démarrage pour allumer l'écran et basculer sur la bonne entrée (mesuré : écran allumé et sur la bonne entrée **28 s après la commande de redémarrage**). Copier `conf/tv.conf.example` vers `/userdata/system/tv.conf` et renseigner IP, MAC et clé.
+
+Deux limites honnêtes : **ne jamais appeler `setWolMode true`** (cela rebascule le réglage du téléviseur sur « activation par les applications ») ; et selon le mode de démarrage à distance, certains téléviseurs **quittent le réseau après une dizaine de minutes de veille** — le paquet magique ne les réveille alors plus, il faut soit un trafic périodique depuis un appareil toujours allumé, soit un adaptateur USB-CEC. Le service ne fait volontairement **rien à l'arrêt** : mettre l'écran en veille juste avant d'éteindre la box n'apporte rien et complique le diagnostic des blocages d'extinction (§4).
+
+## 6. Mesurer avant de régler
 
 `tools/perfmon.sh <label> <secondes>` écrit un CSV à 1 Hz (CPU total et cœur le plus chargé, MHz, GPU busy/sclk/mclk, Tctl, STAPM/PPT réels via `ryzenadj -i`, RAM). `tools/bench.sh` lance une rom via l'API ES, attend le mode démo, mesure, arrête. `tools/burntest.sh <W> <s>` charge 12 threads à puissance fixée (attention : `openssl speed -seconds N` enchaîne 6 tailles de bloc). MangoHud (couche Vulkan fournie par Batocera) donne les frametimes : `global.hud=custom` + `hud_custom` avec `autostart_log` pour logger en CSV ; `gpu_power` est faux sur cet iGPU (65,5 W constants), la puissance package est sur la ligne CPU.
 

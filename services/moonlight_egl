@@ -1,0 +1,41 @@
+#!/bin/bash
+# Service Batocera (system.services) : force le rendu EGL de Moonlight sous X11.
+# Sans SDL_VIDEO_X11_FORCE_EGL=1, SDL cree un contexte GLX, l'EGLRenderer zero-copy de moonlight-qt echoue
+# ("Cannot get EGL display") et Moonlight retombe sur le rendu VAAPI direct (VAEntrypointVideoProc) qui
+# plafonne a ~60 images/s : mesure 2026-09-19 = decodage 197 ms a 4K60, 76 ms + 52 % de pertes a 1080p120.
+# Avec EGL : decodage 0,15-0,35 ms, rendu 4,4 ms (1080p120) / 11,6 ms (4K60), 0 % de pertes.
+# Batocera ne permet pas de passer une variable d'environnement au generateur : on masque /usr/bin/moonlight-qt
+# par un wrapper (bind mount, non persistant => refait a chaque boot ; la copie du vrai binaire est
+# rafraichie a chaque boot, donc une mise a jour Batocera est suivie automatiquement).
+T=/userdata/system/tools; log=/userdata/system/logs/display.log
+case "$1" in
+  start)
+    grep -q " /usr/bin/moonlight-qt " /proc/mounts && exit 0
+    cp -f /usr/bin/moonlight-qt $T/moonlight-qt.real || exit 1
+    cat > $T/moonlight-qt.egl <<'WRAP'
+#!/bin/bash
+# wrapper genere par services/moonlight_egl : (1) rendu EGL zero-copy, (2) resolution de flux hors 720/1080/4K.
+# Le generateur Batocera ne connait que --720/--1080/--4K (moonlight_resolution = autre/1/2) ; la cle maison
+# moonlight.resolution_override=--1440 (ou --resolution WxH) remplace ce drapeau (2560x1440 accepte par la TV a 120 Hz).
+export SDL_VIDEO_X11_FORCE_EGL=1
+# Sans gestionnaire de fenetres, moonlight-qt passe en plein ecran SDL exclusif et SDL "choisit" un mode : il prenait
+# le premier 2560x1440/1920x1080 de la liste (59.99/60.01 Hz) au lieu du 120 Hz pose par le hook ; le veilleur qui
+# remettait le 120 Hz pendant l init du rendu EGL a provoque un segfault Mesa (21:40, 19/09). On interdit a SDL
+# tout changement de mode : il garde le mode courant (celui du hook moonlight_mode.sh).
+export SDL_VIDEO_X11_XRANDR=0
+export SDL_VIDEO_X11_XVIDMODE=0
+if [ -f /tmp/moonlight_override ]; then ovr=$(cat /tmp/moonlight_override); else ovr=$(grep -E "^moonlight.resolution_override=" /userdata/system/batocera.conf | cut -d= -f2- | sed 's/ *#.*//'); fi
+# (le hook scripts/moonlight_mode.sh ecrit /tmp/moonlight_override selon la tuile : vide = garder le drapeau du generateur)
+args=()
+for a in "$@"; do
+  case "$a" in --720|--1080|--1440|--4K) [ -n "$ovr" ] && { args+=($ovr); ovr=""; continue; } ;; esac
+  args+=("$a")
+done
+exec /userdata/system/tools/moonlight-qt.real "${args[@]}"
+WRAP
+    chmod +x $T/moonlight-qt.egl
+    mount --bind $T/moonlight-qt.egl /usr/bin/moonlight-qt && echo "moonlight_egl: $(date +%F_%T) wrapper EGL monte sur /usr/bin/moonlight-qt" >> $log ;;
+  stop)
+    umount /usr/bin/moonlight-qt 2>/dev/null ;;
+esac
+exit 0

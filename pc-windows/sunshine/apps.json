@@ -1,0 +1,36 @@
+{
+    "apps": [
+        {
+            "image-path": "desktop.png",
+            "name": "Desktop"
+        },
+        {
+            "auto-detach": true,
+            "cmd": "",
+            "detached": [
+                "cmd /C start \"\" steam://open/bigpicture"
+            ],
+            "elevated": false,
+            "exclude-global-prep-cmd": false,
+            "exit-timeout": 5,
+            "image-path": "steam.png",
+            "name": "Steam Big Picture",
+            "prep-cmd": [
+                {
+                    "do": "cmd /C \"tasklist /FI \"IMAGENAME eq steam.exe\" | find /i \"steam.exe\" >nul || (start \"\" \"C:\\Users\\batocera\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\Steam Big Picture.lnk\" & timeout /t 25 /nobreak >nul)\"",
+                    "undo": ""
+                },
+                {
+                    "do": "",
+                    "undo": "steam://close/bigpicture"
+                },
+                {
+                    "do": "cmd /C \"shutdown /a >nul 2>&1 & exit /b 0\"",
+                    "undo": "shutdown /s /t 900 /c \"Extinction dans 15 min (fin de session Steam via Moonlight). Annuler : shutdown /a\""
+                }
+            ],
+            "wait-all": true
+        }
+    ],
+    "env": {}
+}
