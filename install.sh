@@ -42,7 +42,7 @@ cpu=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2)
 echo "$cpu" | grep -q "5560U" || warn "CPU différent du Ryzen 5 5560U (${cpu# }) : les valeurs de puissance/ventilation (35 W, table PWM, sonde it87) sont spécifiques au Beelink SER5 — relisez services/fanctl et scripts/tdp_heavy.sh avant de les activer"
 if [ $UNINSTALL -eq 1 ]; then
   log "désinstallation des services/scripts (batocera.conf n'est pas modifié)"
-  run "rm -f $SYS/services/fanctl $SYS/services/wlan_off $SYS/services/custom_service $SYS/scripts/tdp_heavy.sh $SYS/.drirc /etc/modprobe.d/blacklist-wifi-mt7921.conf"
+  run "rm -f $SYS/services/fanctl $SYS/services/wlan_off $SYS/services/custom_service $SYS/services/s5_guard $SYS/services/audio_guard $SYS/services/bt_idle $SYS/tools/bt_idle.py $SYS/power-button.sh $SYS/configs/multimedia_keys.conf $SYS/scripts/tdp_heavy.sh $SYS/.drirc /etc/modprobe.d/blacklist-wifi-mt7921.conf"
   run "rm -rf /userdata/shaders/configs/fsr /userdata/shaders/edge-smoothing/fsr"
   run "batocera-settings-set system.services ''"
   run "batocera-save-overlay >/dev/null"
@@ -65,6 +65,16 @@ if [ $WIFI -eq 1 ]; then
     log "blacklist Wi-Fi posée dans l'overlay (batocera-save-overlay à la fin)"
   fi
 fi
+install_file services/s5_guard    "$SYS/services/s5_guard"    755
+install_file services/audio_guard "$SYS/services/audio_guard" 755
+install_file services/bt_idle     "$SYS/services/bt_idle"     755
+install_file tools/bt_idle.py     "$SYS/tools/bt_idle.py"     755
+SERVICES="$SERVICES s5_guard audio_guard bt_idle"
+
+# bouton d'alimentation : arret propre sur appui court (voir README §4)
+install_file power-button.sh            "$SYS/power-button.sh"                   755
+install_file configs/multimedia_keys.conf "$SYS/configs/multimedia_keys.conf"    644
+
 install_file scripts/tdp_heavy.sh "$SYS/scripts/tdp_heavy.sh" 755
 warn "tout fichier exécutable dans $SYS/scripts/ est un hook gameStart/gameStop : n'y déposez rien d'autre"
 
@@ -103,6 +113,8 @@ cat <<EOF
 
 Installation terminée. Reste à faire à la main :
   - BIOS : iGPU Configuration = UMA_SPECIFIED, UMA Frame Buffer Size = 4 Go (voir README §3) ;
+  - BIOS, si votre machine reste allumée après un arrêt : AMD PBS → Wake on PME = Disabled, Wake On Voice = Disabled (README §4) ;
+  - bouton d'alimentation : /etc/init.d/S50triggerhappy restart (prise en compte de configs/multimedia_keys.conf) ;
   - vérifier la sortie vidéo : global.videooutput=$(batocera-settings-get global.videooutput 2>/dev/null || echo "?") — adaptez si votre TV n'est pas sur HDMI-1 ;
   - si votre TV n'accepte pas le 4K60, remettez global.videomode (menu ES → Paramètres des jeux → Mode vidéo) ;
   - redémarrer : reboot

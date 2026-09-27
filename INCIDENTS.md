@@ -26,3 +26,15 @@
 
 ## Scintillement en 4K60 : câble HDMI
 Artefacts même sur image fixe, captures internes (`batocera-screenshot`) propres → défaut en aval du Beelink. Le 4K60 4:4:4 exige ~18 Gbit/s ; remplacer par un câble Premium High Speed a tout réglé.
+
+## La machine ne s'éteint pas : LED allumée, machine morte
+
+Aléatoire, depuis le premier jour, sous Windows comme sous Linux, deux versions de BIOS. Un appui long (6 s) coupe bien l'alimentation → l'EC et le séquencement électrique sont sains, c'est la transition ACPI S5 qui n'aboutit pas. Le service `s5_guard` archive au démarrage suivant le journal noyau du dernier arrêt (pstore EFI) : s'il contient `reboot: Power down`, le noyau avait terminé et rendu la main au firmware — le défaut est matériel. C'est ce qui a été constaté ici, journal complet et sans anomalie. Les erreurs `amdgpu` de fin d'arrêt (`failed to blank crtc!`) sont innocentes : on les retrouve sur des arrêts parfaitement réussis. Atténuations : désarmer toutes les sources de réveil (`s5_guard` le fait pour `GP17`, `XHC0/1`, `GPP1` et le Wake-on-LAN) et, dans le BIOS, `AMD PBS → Wake on PME = Disabled`. Après un blocage, débrancher l'alimentation une trentaine de secondes suffit.
+
+## Accents invisibles dans EmulationStation
+
+Tout caractère non-ASCII s'affiche comme un espace, dans les menus comme dans les vues. Déclencheur : X démarre **sans écran connecté** (téléviseur en veille au redémarrage de la box). ES précharge les codes 32→127 dans un premier atlas de glyphes et rastérise le reste à chaud ; ces atlas-là restent vides. Ni police, ni locale, ni `MaxVRAM` en cause — le correctif amont de ce bug n'existe que pour le renderer GLES20, alors que le build x86/X11 utilise GL21. Corriger : `/etc/init.d/S31emulationstation restart` une fois l'écran allumé (vérifier que le PID d'`xinit` a changé). `custom_service` le fait automatiquement depuis. **À ne pas tenter** : baisser `es.resolution` pour réduire la taille des polices — ES meurt pendant le chargement du thème et le serveur X se fige (tout `xrandr` bloque, seul `kill -9` en vient à bout).
+
+## Appui court sur le bouton d'alimentation sans effet
+
+Le gestionnaire maison mémorisait l'heure d'appui dans un drapeau qu'il n'écrasait pas s'il existait déjà : un relâchement perdu laissait un drapeau orphelin, et tous les appuis suivants héritaient de sa date — donc étaient traités en appui long (menu Quitter au lieu de l'arrêt). Un appui court a ainsi été mesuré à 26 minutes. Correctif : rafraîchir le drapeau au-delà d'une seconde (fenêtre du périphérique ACPI jumeau PWRB/PWRF) et considérer toute durée supérieure à six secondes comme périmée, puisque l'EC coupe l'alimentation à ce stade.

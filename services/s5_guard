@@ -1,0 +1,45 @@
+#!/bin/bash
+# Service Batocera (system.services) — instrumentation et mitigations du blocage d'extinction du SER5
+# (LED allumee, machine morte apres "eteindre"/"redemarrer", aleatoire, identique sous Windows ; voir INCIDENTS.md).
+# 1) Journal noyau d'arret dans le pstore EFI (printk.always_kmsg_dump) : au boot suivant, les dumps sont
+#    archives dans logs/pstore/<date>/ puis EFFACES (chaque dump = ~16 variables UEFI, la NVRAM AMI est petite).
+#    Lecture : si l'archive du boot qui a suivi un blocage contient "reboot: Power down" / "Restarting system",
+#    le noyau avait fini son travail et c'est le firmware/materiel qui n'a pas coupe ; sinon le noyau a bloque avant.
+# 2) Sources de reveil ACPI inutiles desactivees (GP17 = pont interne GPU/USB, XHC0/XHC1 = USB) : un evenement de
+#    reveil (pulse HPD de la TV, peripherique USB) pendant l'entree en S5 est un candidat au blocage. GPP1 (carte
+#    Ethernet, Wake-on-LAN) est conservee : elle sert a rallumer la box a distance.
+[ "$1" = "start" ] || exit 0
+log=/userdata/system/logs/display.log
+arch=/userdata/system/logs/pstore
+grep -q " /sys/fs/pstore " /proc/mounts || mount -t pstore pstore /sys/fs/pstore 2>/dev/null
+n=$(ls /sys/fs/pstore 2>/dev/null | wc -l)
+if [ "$n" -gt 0 ]; then
+  d=$arch/$(date +%F_%H%M%S); mkdir -p "$d"
+  # les parties "Shutdown#N PartM" sont numerotees a l'envers (Part1 = fin du journal) : on les recolle dans l'ordre
+  for f in $(ls /sys/fs/pstore | sort -r); do sed 1d "/sys/fs/pstore/$f" >> "$d/dmesg-shutdown.txt"; rm -f "/sys/fs/pstore/$f"; done
+  verdict="sans 'Power down' (noyau bloque avant la fin ?)"
+  grep -qE "reboot: (Power down|Restarting system)" "$d/dmesg-shutdown.txt" && verdict="noyau arrive au bout ($(grep -oE 'reboot: .*' "$d/dmesg-shutdown.txt" | tail -1))"
+  # duree de la session qui vient de se terminer (horodatage noyau de la derniere ligne) : le blocage du 27/09
+  # est survenu apres 16 h 45 d'uptime alors que les 9 arrets sains suivaient des sessions de moins de 46 min.
+  up=$(grep -oE '^<[0-9]>\[ *[0-9]+\.' "$d/dmesg-shutdown.txt" | tail -1 | grep -oE '[0-9]+' | tail -1)
+  echo "s5_guard: $(date +%T) $n dumps pstore archives dans $d (session de ${up:-?} s) : $verdict" >> "$log"
+  ls -1dt $arch/*/ 2>/dev/null | tail -n +31 | xargs -r rm -rf   # garder les 30 derniers
+fi
+echo 1 > /sys/module/printk/parameters/always_kmsg_dump 2>/dev/null
+# Sources de reveil ACPI desactivees. GP17 = pont interne GPU/USB, XHC0/XHC1 = controleurs USB (depuis le 20/09).
+# GPP1 = pont de la carte Ethernet Realtek : ajoute le 27/09 avec le Wake-on-LAN lui-meme (S5_KEEP_WOL=1 dans
+# /userdata/system/s5_guard.conf pour revenir en arriere). Motif : au blocage du 27/09 le noyau etait alle au bout
+# (`reboot: Power down` dans le pstore) et c'est la plateforme qui n'a pas coupe ; une source de reveil armee au
+# moment de l'ecriture SLP_EN est la cause classique d'un S5 ignore. Il n'est pas besoin qu'un magic packet soit
+# envoye : la carte reste alimentee, lien actif, ligne PME armee, et peut l'asserter de travers. Consequence :
+# plus de reveil du Beelink a distance (magic packet depuis le N100) ni de cycles automatises tools/s5cycle.sh.
+# GPP3 (pont du SSD NVMe) est laisse actif : une variable a la fois.
+[ -r /userdata/system/s5_guard.conf ] && . /userdata/system/s5_guard.conf
+wakes="GP17 XHC0 XHC1"
+if [ "${S5_KEEP_WOL:-0}" != "1" ]; then
+  wakes="$wakes GPP1"
+  ethtool -s eth0 wol d 2>/dev/null && echo "s5_guard: $(date +%T) Wake-on-LAN desactive sur eth0" >> "$log"
+fi
+for w in $wakes; do grep -qE "^$w\s.*\*enabled" /proc/acpi/wakeup && echo $w > /proc/acpi/wakeup; done
+echo "s5_guard: $(date +%T) kmsg_dump actif ; reveils actifs : $(awk '/\*enabled/{printf "%s ",$1}' /proc/acpi/wakeup)" >> "$log"
+exit 0

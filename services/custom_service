@@ -2,7 +2,7 @@
 # Garde-fou affichage : (1) au demarrage, apres une coupure, la TV peut ne pas etre detectee quand X
 # demarre : aucun ecran "primary", batocera-resolution echoue et tout lancement plante ; on retablit le
 # primary et le mode es.resolution. (2) Ensuite, en boucle (5 s), on surveille seulement le "primary" :
-# un jeu qui change de mode HDMI (ex. un jeu force en 1080p120) peut le faire perdre a la sortie, et le
+# un jeu qui change de mode HDMI (ex. un jeu 3D lourd en 1080p120) peut le faire perdre a la sortie, et le
 # lancement suivant plante ("invalid literal for int()" dans videoMode.getCurrentResolution).
 # On ne touche jamais au mode video dans la boucle (un jeu peut legitimement etre dans un autre mode).
 [ "$1" = "start" ] || exit 0
@@ -28,6 +28,30 @@ get_display() { pgrep -a xinit 2>/dev/null | grep -oE ':[0-9]+$' | head -1; }
     fi
     sleep 2
   done
+  # --- phase 1c-bis : X demarre sans ecran => accents invisibles ---
+  # Si la TV est en veille au demarrage (cas normal : on eteint la box, la TV passe en veille,
+  # on rallume la box avant la TV), X demarre sans sortie HDMI connectee et les atlas de glyphes
+  # qu'ES cree A CHAUD restent vides : tout caractere non-ASCII s'affiche comme un espace
+  # ("Jeux joues", "RED MARRER" — cf. INCIDENTS.md 27/09). Relancer ES seul ne suffit pas, il faut
+  # relancer la pile (S31emulationstation restart relance xinit/X). On surveille donc le connecteur
+  # et on relance UNE fois, quand l'ecran reapparait et qu'aucun jeu ne tourne.
+  conn=$(ls /sys/class/drm/card*-HDMI-A-1/status 2>/dev/null | head -1)
+  if [ -n "$conn" ] && [ "$(cat "$conn" 2>/dev/null)" != "connected" ]; then
+    echo "custom_service: $(date +%T) X a demarre sans ecran ($conn), attente du HDMI pour relancer la pile" >> "$log"
+    (
+      for i in $(seq 1 180); do            # 15 min d'attente maximum
+        sleep 5
+        [ "$(cat "$conn" 2>/dev/null)" = "connected" ] || continue
+        curl -s --connect-timeout 1 http://127.0.0.1:1234/runningGame 2>/dev/null | grep -q "NO GAME RUNNING" || continue
+        pgrep -f "retroarch|dolphin|PPSSPP|redream|moonlight-qt" >/dev/null && continue
+        sleep 5                            # laisse le mode se stabiliser apres le hotplug
+        echo "custom_service: $(date +%T) HDMI revenu, relance de la pile d'affichage (glyphes accentues)" >> "$log"
+        /etc/init.d/S31emulationstation restart >/dev/null 2>&1
+        break
+      done
+    ) &
+  fi
+
   # --- phase 1b : gouverneur/EPP de repos (quelque chose remet "performance" apres S18governor au boot) ---
   sleep 20; /etc/init.d/S18governor start >/dev/null 2>&1
   for e in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do echo balance_performance > $e 2>/dev/null; done
@@ -52,5 +76,5 @@ get_display() { pgrep -a xinit 2>/dev/null | grep -oE ':[0-9]+$' | head -1; }
   done
 ) &
 
-# Tampons reseau pour le streaming Moonlight 4K (rafales UDP) — la r8169 est limitee a 256 descripteurs RX
+# Tampons reseau pour le streaming de jeux en 4K (rafales UDP) — la r8169 est limitee a 256 descripteurs RX
 sysctl -qw net.core.netdev_max_backlog=5000 net.core.rmem_default=4194304 net.core.rmem_max=16777216

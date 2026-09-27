@@ -1,0 +1,26 @@
+#!/bin/bash
+# Service Batocera (system.services) : garde-fou de la sortie audio.
+# 2026-09-19 : apres des redemarrages, le GPU est passe de l'adresse PCI 04:00 a 03:00 ; la cle
+# audio.device (alsa_output.pci-0000_04_00.1.HiFi__HDMI2__sink) ne designait plus rien et Batocera est
+# retombe en silence sur la prise casque (Line2) — interface, emulateurs et lecteurs muets sur la TV.
+# Au boot (une fois PipeWire pret) : si le sink configure n'existe pas, on prend le sink HDMI dont le port
+# est "available" (= cable branche), on l'applique et on corrige la cle. Journal : display.log.
+[ "$1" = "start" ] || exit 0
+log=/userdata/system/logs/display.log
+(
+  for i in $(seq 1 45); do pactl info >/dev/null 2>&1 && break; sleep 2; done
+  sleep 3
+  want=$(batocera-settings-get audio.device 2>/dev/null)
+  if [ -n "$want" ] && [ "$want" != "auto" ] && pactl list short sinks | cut -f2 | grep -qx "$want"; then
+    echo "audio_guard: $(date +%T) sink configure present ($want)" >> "$log"; exit 0
+  fi
+  # sink HDMI branche : le port "available" parmi les sinks HDMI
+  hdmi=$(pactl list sinks | awk '/^\tName: /{n=$2} /HDMI.*Output.*[^t] available\)/{print n}' | head -1)
+  [ -z "$hdmi" ] && hdmi=$(pactl list sinks | awk '/^\tName: /{n=$2} /\[Out\] HDMI/ && / available\)/ && !/not available/{print n}' | head -1)
+  if [ -z "$hdmi" ]; then echo "audio_guard: $(date +%T) sink '$want' absent et aucun HDMI branche : rien fait" >> "$log"; exit 0; fi
+  batocera-settings-set audio.device "$hdmi"
+  batocera-audio set "$hdmi" >/dev/null 2>&1
+  pactl set-default-sink "$hdmi" 2>/dev/null
+  echo "audio_guard: $(date +%T) sink '$want' absent -> '$hdmi' applique et ecrit dans batocera.conf" >> "$log"
+) &
+exit 0

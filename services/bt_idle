@@ -1,0 +1,8 @@
+#!/bin/bash
+# Deconnecte les manettes Bluetooth inactives (10 min par defaut, cle controllers.bt.idle_timeout).
+# Logique dans /userdata/system/tools/bt_idle.py (log : system/logs/bt_idle.log).
+case "$1" in
+  start) pkill -f tools/bt_idle.py 2>/dev/null
+         nohup python3 /userdata/system/tools/bt_idle.py >/dev/null 2>&1 & ;;
+  stop)  pkill -f tools/bt_idle.py ;;
+esac
