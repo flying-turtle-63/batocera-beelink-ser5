@@ -85,6 +85,12 @@ if [ $STREAM -eq 1 ]; then
   SERVICES="$SERVICES moonlight_egl tv_on"
   if [ -f "$SYS/tv.conf" ]; then
     log "tv.conf déjà présent : conservé"
+    # ancien défaut TV_MUTE_AT_ON=1 : le mute posé à l'allumage n'était jamais levé (TV muette)
+    if grep -q '^TV_MUTE_AT_ON=1' "$SYS/tv.conf"; then
+      backup "$SYS/tv.conf"
+      run "sed -i 's/^TV_MUTE_AT_ON=1/TV_MUTE_AT_ON=0/' '$SYS/tv.conf'"
+      log "tv.conf : TV_MUTE_AT_ON passé à 0"
+    fi
   else
     install_file conf/tv.conf.example "$SYS/tv.conf" 644
     warn "renseignez TV_IP / TV_MAC / TV_PSK dans $SYS/tv.conf (sinon tv_on ne fera rien)"
