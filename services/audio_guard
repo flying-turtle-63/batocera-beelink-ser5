@@ -1,26 +1,57 @@
 #!/bin/bash
 # Service Batocera (system.services) : garde-fou de la sortie audio.
 # 2026-09-19 : apres des redemarrages, le GPU est passe de l'adresse PCI 04:00 a 03:00 ; la cle
-# audio.device (alsa_output.pci-0000_04_00.1.HiFi__HDMI2__sink) ne designait plus rien et Batocera est
-# retombe en silence sur la prise casque (Line2) — interface, emulateurs et lecteurs muets sur la TV.
-# Au boot (une fois PipeWire pret) : si le sink configure n'existe pas, on prend le sink HDMI dont le port
-# est "available" (= cable branche), on l'applique et on corrige la cle. Journal : display.log.
+# audio.device ne designait plus rien et Batocera est retombe en silence sur la prise casque (Line2).
+# 2026-09-29 : rechute — la cle pointait sur un nom d'epoque UCM (…HiFi__HDMI2__sink) alors que PipeWire
+# expose desormais 'alsa_output.pci-0000_03_00.1.hdmi-stereo-extra1', et la detection du port HDMI
+# "available" ne reconnaissait plus le format de pactl ("type: HDMI, …, available"). Resultat : le garde
+# concluait "aucun HDMI branche" et laissait le son sur le Line Out -> Moonlight/Steam muets sur la TV.
+# Desormais : detection par "type: HDMI" + "available" (hors "not available"), et on verifie aussi que le
+# sink par defaut est bien celui-la (pas seulement qu'il existe). Journal : display.log.
 [ "$1" = "start" ] || exit 0
 log=/userdata/system/logs/display.log
+
+hdmi_available() {
+  pactl list sinks 2>/dev/null | awk '
+    /^[ \t]*Name: /       { n=$2 }
+    /type: HDMI/ && /available\)/ && !/not available\)/ { print n; exit }
+  '
+}
+
+apply() {
+  local s="$1"
+  pactl set-default-sink "$s" 2>/dev/null
+  for i in $(pactl list sink-inputs short 2>/dev/null | cut -f1); do
+    pactl move-sink-input "$i" "$s" 2>/dev/null
+  done
+}
+
 (
   for i in $(seq 1 45); do pactl info >/dev/null 2>&1 && break; sleep 2; done
   sleep 3
   want=$(batocera-settings-get audio.device 2>/dev/null)
-  if [ -n "$want" ] && [ "$want" != "auto" ] && pactl list short sinks | cut -f2 | grep -qx "$want"; then
-    echo "audio_guard: $(date +%T) sink configure present ($want)" >> "$log"; exit 0
-  fi
-  # sink HDMI branche : le port "available" parmi les sinks HDMI
-  hdmi=$(pactl list sinks | awk '/^\tName: /{n=$2} /HDMI.*Output.*[^t] available\)/{print n}' | head -1)
-  [ -z "$hdmi" ] && hdmi=$(pactl list sinks | awk '/^\tName: /{n=$2} /\[Out\] HDMI/ && / available\)/ && !/not available/{print n}' | head -1)
-  if [ -z "$hdmi" ]; then echo "audio_guard: $(date +%T) sink '$want' absent et aucun HDMI branche : rien fait" >> "$log"; exit 0; fi
-  batocera-settings-set audio.device "$hdmi"
-  batocera-audio set "$hdmi" >/dev/null 2>&1
-  pactl set-default-sink "$hdmi" 2>/dev/null
-  echo "audio_guard: $(date +%T) sink '$want' absent -> '$hdmi' applique et ecrit dans batocera.conf" >> "$log"
+  # la TV peut mettre du temps a s'allumer (service tv_on) : on laisse jusqu'a 2 min au port HDMI
+  for i in $(seq 1 24); do
+    cur=$(pactl info 2>/dev/null | sed -n 's/^Default Sink: //p')
+    if [ -n "$want" ] && [ "$want" != "auto" ] && pactl list short sinks | cut -f2 | grep -qx "$want"; then
+      if [ "$cur" != "$want" ]; then
+        apply "$want"
+        echo "audio_guard: $(date +%T) sink configure present mais defaut='$cur' -> '$want' applique" >> "$log"
+      else
+        echo "audio_guard: $(date +%T) sink configure present et actif ($want)" >> "$log"
+      fi
+      exit 0
+    fi
+    hdmi=$(hdmi_available)
+    if [ -n "$hdmi" ]; then
+      batocera-settings-set audio.device "$hdmi"
+      batocera-audio set "$hdmi" >/dev/null 2>&1
+      apply "$hdmi"
+      echo "audio_guard: $(date +%T) sink '$want' absent -> '$hdmi' applique et ecrit dans batocera.conf" >> "$log"
+      exit 0
+    fi
+    sleep 5
+  done
+  echo "audio_guard: $(date +%T) sink '$want' absent et aucun HDMI branche apres 2 min : rien fait" >> "$log"
 ) &
 exit 0

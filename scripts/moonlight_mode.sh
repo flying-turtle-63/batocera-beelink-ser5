@@ -22,13 +22,18 @@ conf=/userdata/system/batocera.conf
 out=$(grep -E "^global.videooutput=" $conf | cut -d= -f2); out=${out:-HDMI-1}
 d=$(pgrep -a xinit | grep -oE " :[0-9]" | head -1 | tr -d " "); export DISPLAY=${d:-:0}
 # Modes absents de l EDID de la Sony XR-65A84J mais acceptes par elle (testes 2026-09-19/20), tous sous la limite
-# HDMI 2.0 (600 MHz) : 2560x1440@120 (CVT-RB, 497 MHz), 2880x1620@100 (CVT-RB, 516 MHz), 2880x1620@120 (blanking
-# reduit sous la norme, 586 MHz). Ajoutes a la volee sous le nom WxH_RR ; TV en "Mode large = Plein 1" pour remplir l ecran.
+# HDMI 2.0 (600 MHz) : 2560x1440@120 (CVT-RB, 497 MHz), 2880x1620@100 (CVT-RB, 516 MHz), 2880x1620@120 (594 MHz).
+# Ajoutes a la volee sous le nom WxH_RR ; TV en "Mode large = Plein 1" pour remplir l ecran.
+# Le 2880x1620@120 d origine (586.08 MHz, htotal 2960 = 80 px de blanking horizontal) faisait ACCEPTER
+# L IMAGE ET JETER LE SON par la TV — les paquets audio HDMI voyagent dans le blanking, 80 px ne suffisent pas.
+# Corrige en portant htotal a 3000 (blanking 120 px) : 594.00 MHz, exactement le debit TMDS d un 4K60 standard.
+# Regle : toute nouvelle modeline doit etre testee AU SON (bip : ffmpeg -f lavfi -i sine=frequency=440:duration=4
+# -f pulse -device <sink> tone), pas seulement a l image.
 custom_modeline() { # WxH RR -> modeline (vide si inconnu)
   case "$1_$2" in
     2560x1440_120) echo "497.25 2560 2608 2640 2720 1440 1443 1448 1525 +hsync -vsync" ;;
     2880x1620_100) echo "516.50 2880 2928 2960 3040 1620 1623 1627 1699 +hsync -vsync" ;;
-    2880x1620_120) echo "586.08 2880 2888 2920 2960 1620 1623 1627 1650 +hsync -vsync" ;;
+    2880x1620_120) echo "594.00 2880 2928 2960 3000 1620 1623 1627 1650 +hsync -vsync" ;;
   esac
 }
 ensure_custom_mode() {

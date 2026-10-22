@@ -23,7 +23,11 @@ if [ "$n" -gt 0 ]; then
   # est survenu apres 16 h 45 d'uptime alors que les 9 arrets sains suivaient des sessions de moins de 46 min.
   up=$(grep -oE '^<[0-9]>\[ *[0-9]+\.' "$d/dmesg-shutdown.txt" | tail -1 | grep -oE '[0-9]+' | tail -1)
   echo "s5_guard: $(date +%T) $n dumps pstore archives dans $d (session de ${up:-?} s) : $verdict" >> "$log"
-  ls -1dt $arch/*/ 2>/dev/null | tail -n +31 | xargs -r rm -rf   # garder les 30 derniers
+  # Rotation : garder les 150 dernieres archives. 30 ne suffisaient pas — une campagne de
+  # redemarrages en produit des dizaines et avait efface les archives de blocage, c'est-a-dire
+  # les seules qui comptent. Les archives deplacees a la main dans logs/pstore-keep/ ne sont
+  # jamais touchees par cette rotation.
+  ls -1dt $arch/*/ 2>/dev/null | tail -n +151 | xargs -r rm -rf
 fi
 echo 1 > /sys/module/printk/parameters/always_kmsg_dump 2>/dev/null
 # Sources de reveil ACPI desactivees. GP17 = pont interne GPU/USB, XHC0/XHC1 = controleurs USB (depuis le 20/09).

@@ -29,7 +29,7 @@ curl -L https://github.com/flying-turtle-63/batocera-beelink-ser5/archive/refs/h
 | `services/wlan_off` | neutralise la carte Wi-Fi/BT MediaTek (driver instable) | `/userdata/system/services/` |
 | `services/custom_service` | garde-fou affichage (sortie *primary*), gouverneur/EPP de repos, base TDP | `/userdata/system/services/` |
 | `services/s5_guard` | **journal noyau du dernier arrêt** archivé depuis le pstore EFI + sources de réveil ACPI/WoL désactivées (voir §4) | `/userdata/system/services/` |
-| `services/audio_guard` | rattrape la sortie audio quand le GPU change d'adresse PCI (son perdu après un redémarrage) | `/userdata/system/services/` |
+| `services/audio_guard` | rattrape la sortie audio quand le sink configuré a disparu (GPU qui change d'adresse PCI, nom de sink renommé par PipeWire) ou n'est pas celui par défaut ; attend jusqu'à 2 min que la TV s'allume | `/userdata/system/services/` |
 | `services/bt_idle` + `tools/bt_idle.py` | déconnecte les manettes Bluetooth après 10 min sans appui (la manette s'éteint alors seule et ne se vide plus) | `/userdata/system/services/` et `/userdata/system/tools/` |
 | `power-button.sh` + `configs/multimedia_keys.conf` | bouton d'alimentation : **appui court = arrêt propre** (jeu fermé, gamelists sauvegardées), appui long = menu Quitter | `/userdata/system/` et `/userdata/system/configs/` |
 | `services/moonlight_egl` | **force le rendu EGL zero-copy de Moonlight** (sans lui, le décodage passe de 0,2 ms à ~197 ms) et permet une résolution de flux hors 720p/1080p/4K | `/userdata/system/services/` |
@@ -100,6 +100,7 @@ Résultat (burn 12 threads à 30 W) : **83–88 °C → 70 °C**. En jeu lourd �
 | Advanced → AMD PBS | `S3/Modern Standby Support` | `S3 Enable` | un firmware qui n'annonce que `S0 S5` (Modern Standby seul) est la configuration où la veille ne se réveille jamais sous Windows |
 | Advanced → USB Configuration | Legacy USB / XHCI hand-off | `Enabled` (défaut) | nécessaires au clavier BIOS et à Linux, rien à changer |
 | Advanced (page AMD) | DPTC interface `Auto`, STT sensor reporting `Disabled`, tensions VDDP/VDDIO | défaut | ne pas toucher aux tensions ; Curve Optimizer / undervolt sont refusés par le SMU sur ce firmware (`ryzenadj --set-coall` rejeté) |
+| — | Microcode CPU | — | chez AMD grand public il arrive par l'AGESA du BIOS ; linux-firmware (`amd-ucode/microcode_amd_fam19h.bin`) a bien une entrée Cezanne 19h/50h, chargée tôt par le noyau si elle est plus récente que celle du BIOS. Sécurité uniquement, aucun gain de performance |
 
 Effet de bord observé après ces changements : le firmware annonce au boot STAPM 37,5 / fast 48 / slow 37,5 W au lieu de 25/30/24 ; comme Batocera re-détecte `system.cpu.tdp` depuis le PPT FAST à chaque démarrage, `custom_service` force la base à 25 W pour garder le sens des pourcentages ES.
 
@@ -138,7 +139,7 @@ Deux variables complètent le tableau : `SDL_VIDEO_X11_XRANDR=0` et `SDL_VIDEO_X
 
 ### Mode d'affichage pendant le flux
 
-`scripts/moonlight_mode.sh` est un hook `gameStart`/`gameStop` : il applique `moonlight.display_mode` (par exemple `2880x1620.120.00`) au lancement et remet `es.resolution` à la sortie, en ajoutant au besoin la modeline correspondante. Trois modes sont fournis, tous sous la limite des 600 MHz : **2560×1440@120** (CVT-RB, 497 MHz), **2880×1620@100** (516 MHz) et **2880×1620@120** (blanking réduit sous la norme, 586 MHz). Un profil par tuile est possible : `steam["<fichier>.steam"].display_mode` et `.resolution_override` priment sur les clés globales.
+`scripts/moonlight_mode.sh` est un hook `gameStart`/`gameStop` : il applique `moonlight.display_mode` (par exemple `2880x1620.120.00`) au lancement et remet `es.resolution` à la sortie, en ajoutant au besoin la modeline correspondante. Trois modes sont fournis, tous sous la limite des 600 MHz : **2560×1440@120** (CVT-RB, 497 MHz), **2880×1620@100** (516 MHz) et **2880×1620@120** (594 MHz, le débit d'un 4K60 standard ; une première version à 80 px de blanking horizontal, 586 MHz, donnait l'image mais **pas le son** : les paquets audio HDMI passent dans le blanking — toute modeline maison se valide à l'oreille). Un profil par tuile est possible : `steam["<fichier>.steam"].display_mode` et `.resolution_override` priment sur les clés globales.
 
 ### Côté Windows
 
