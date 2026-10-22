@@ -100,7 +100,7 @@ Résultat (burn 12 threads à 30 W) : **83–88 °C → 70 °C**. En jeu lourd �
 | Advanced → AMD PBS | `S3/Modern Standby Support` | `S3 Enable` | un firmware qui n'annonce que `S0 S5` (Modern Standby seul) est la configuration où la veille ne se réveille jamais sous Windows |
 | Advanced → USB Configuration | Legacy USB / XHCI hand-off | `Enabled` (défaut) | nécessaires au clavier BIOS et à Linux, rien à changer |
 | Advanced (page AMD) | DPTC interface `Auto`, STT sensor reporting `Disabled`, tensions VDDP/VDDIO | défaut | ne pas toucher aux tensions ; Curve Optimizer / undervolt sont refusés par le SMU sur ce firmware (`ryzenadj --set-coall` rejeté) |
-| — | Microcode CPU | — | chez AMD grand public il arrive par l'AGESA du BIOS ; linux-firmware (`amd-ucode/microcode_amd_fam19h.bin`) a bien une entrée Cezanne 19h/50h, chargée tôt par le noyau si elle est plus récente que celle du BIOS. Sécurité uniquement, aucun gain de performance |
+| — | Microcode CPU | — | chez AMD grand public il arrive par l'AGESA du BIOS : `0x0a50000d` avec le BIOS U509. linux-firmware publie `0x0a500012` pour Cezanne (19h/50h) dans `amd-ucode/microcode_amd_fam19h.bin`, mais **Batocera 43.1 ne livre pas ce fichier** et n'expose pas de rechargement à chaud : le noyau signale donc `spec_rstack_overflow` et `tsa` « no microcode ». Seule voie : un initrd microcode chargé avant `initrd.gz`. Sécurité uniquement, aucun gain de performance |
 
 Effet de bord observé après ces changements : le firmware annonce au boot STAPM 37,5 / fast 48 / slow 37,5 W au lieu de 25/30/24 ; comme Batocera re-détecte `system.cpu.tdp` depuis le PPT FAST à chaque démarrage, `custom_service` force la base à 25 W pour garder le sens des pourcentages ES.
 
